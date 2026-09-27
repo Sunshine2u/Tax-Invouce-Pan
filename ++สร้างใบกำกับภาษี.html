@@ -1,0 +1,2192 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบสร้างใบกำกับภาษี (Tax Invoice System)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- html2canvas for PNG Exporting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Cropper.js for Image Cropping -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  <!-- เพิ่ม jsPDF CDN ในส่วน <head> -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- 1. ปรับแก้สไตล์ในส่วน <style> -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+    
+    * {
+      font-family: 'Sarabun', 'THSarabunNew', sans-serif;
+    }
+
+    body { 
+      font-family: 'Sarabun', 'THSarabunNew', sans-serif; 
+    }
+    
+    .page { display: none; }
+    .page.active { display: block; }
+
+    #creditNotePrint, #creditNotePrint * {
+      line-height: 1.25 !important;
+      letter-spacing: normal !important;
+    }
+
+    /* ปรับปรุง CSS แก้ไขเส้นเลื่อนทับสระ/ตัวหนังสือ */
+    #taxInvoicePrint, 
+    #taxInvoicePrint * {
+      line-height: 1.4 !important;
+      letter-spacing: normal !important;
+      box-sizing: border-box !important;
+    }
+
+    /* เพิ่ม Padding และ Margin จุดที่มีเส้นขอบล่างและเส้นแบ่ง */
+    #taxInvoicePrint .border-b, 
+    #taxInvoicePrint .border-t,
+    #taxInvoicePrint hr {
+      margin-top: 2px !important;
+      margin-bottom: 2px !important;
+    }
+
+    /* ปรับ Vertical Alignment และ Padding ของตารางรายการสินค้า */
+    #taxInvoicePrint table th,
+    #taxInvoicePrint table td {
+      padding-top: 6px !important;
+      padding-bottom: 6px !important;
+      vertical-align: middle !important;
+      line-height: 1.3 !important;
+    }
+
+    /* 1. ปรับแก้กรอบข้อความ Exclude VAT / VAT Badge เพิ่ม padding-bottom ให้ตัวอักษรไม่ติดขอบล่าง */
+    #invVatBadge {
+      padding-top: 3px !important;
+      padding-bottom: 4px !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+      line-height: 1.2 !important;
+      display: inline-block;
+    }
+
+    /* 2. ปรับหัวตารางรายการสินค้า (TH) ให้เส้นขอบล่างไม่ติดตัวหนังสือ */
+    #taxInvoicePrint table th {
+      padding-top: 6px !important;
+      padding-bottom: 7px !important;
+      line-height: 1.3 !important;
+      vertical-align: middle !important;
+    }
+
+    /* 3. ปรับรายการสินค้า (TD) ในตาราง ให้เส้นขอบล่าง (border-b) ไม่ติดชิดตัวหนังสือ */
+    #taxInvoicePrint table td {
+      padding-top: 6px !important;
+      padding-bottom: 7px !important;
+      line-height: 1.3 !important;
+      vertical-align: middle !important;
+    }
+    /* ปรับระยะห่างสรุปยอดเงินฝั่งขวาไม่ให้เส้นเกยตัวหนังสือ */
+    #taxInvoicePrint .w-1\/2.space-y-0\.5 > div {
+      padding-top: 2px;
+      padding-bottom: 2px;
+    }
+
+    /* แก้ไขกรอบข้อมูลลูกค้าไม่ให้เส้นติดขอบล่างตัวหนังสือ */
+    #taxInvoicePrint .mb-3.p-2.border {
+      padding-top: 10px !important;
+      padding-bottom: 12px !important; /* เพิ่มพื้นที่ระยะห่างขอบล่าง */
+    }
+
+    #invBuyerName, 
+    #invBuyerAddress,
+    #taxInvoicePrint .mb-3.p-2.border p {
+      line-height: 1.6 !important; /* ขยายระยะห่างระหว่างบรรทัดให้พอดีกับสระไทย */
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+      margin-bottom: 2px !important;
+    }
+
+    /* ปรับแต่งพื้นที่ระยะขอบล่าง 1 นิ้ว (25.4mm) */
+    .a4-page {
+      width: 210mm;
+      min-height: 297mm;
+      max-height: 297mm;
+      padding: 18mm; /* ปรับลดระยะขอบเหลือ 1.8 cm */
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .watermark-cancelled {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 80px;
+      font-weight: 900;
+      color: rgba(220, 38, 38, 0.25);
+      border: 10px solid rgba(220, 38, 38, 0.25);
+      padding: 10px 40px;
+      border-radius: 20px;
+      pointer-events: none;
+      text-transform: uppercase;
+      z-index: 50;
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+      body { background: white !important; padding: 0 !important; }
+      .no-print { display: none !important; }
+      .a4-page { 
+        box-shadow: none !important; 
+        margin: 0 !important; 
+        width: 210mm !important; 
+        height: 297mm !important;
+        padding: 18mm !important; /* บังคับระยะขอบ 1.8 cm ในโหมดพิมพ์ */
+      }
+    }
+
+        /* กำหนด Line-height ให้ชัดเจนเพื่อไม่ให้เส้นเกยตัวอักษร */
+    #taxInvoicePrint * {
+      line-height: 1.4 !important;
+      box-sizing: border-box;
+    }
+
+    /* เพิ่ม Padding-bottom เล็กน้อยตรงจุดที่มีเส้นขอบล่าง */
+    #taxInvoicePrint .border-b, 
+    #taxInvoicePrint border-bottom,
+    #taxInvoicePrint hr {
+      margin-top: 4px !important;
+      margin-bottom: 4px !important;
+    }
+
+    /* ป้องกันตารางและ Flexbox เคลื่อน */
+    #taxInvoicePrint table td, 
+    #taxInvoicePrint table th {
+      padding-top: 6px !important;
+      padding-bottom: 6px !important;
+      vertical-align: middle !important;
+    }
+    
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+  <div class="max-w-5xl mx-auto">
+    
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-gray-300 mb-6 bg-white rounded-t-lg shadow-sm no-print overflow-x-auto">
+      <button id="tab1" onclick="switchPage(1)" class="py-3 px-6 font-bold border-b-2 border-blue-600 text-blue-600 whitespace-nowrap">1. ตั้งค่าระบบ</button>
+      <button id="tab2" onclick="switchPage(2)" class="py-3 px-6 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">2. ประวัติการสั่งซื้อ</button>
+      <button id="tab3" onclick="switchPage(3)" class="hidden py-3 px-6 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">3. เลือกสินค้า & คำนวณราคา</button>
+      <button id="tab4" onclick="switchPage(4)" class="hidden py-3 px-6 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">4. ใบกำกับภาษี (A4)</button>
+    </div>
+
+    <!-- ================= หน้า 1: ตั้งค่าระบบ & Master Data ================= -->
+    <div id="page1" class="page active bg-white p-6 rounded-b-lg shadow-md space-y-6">
+      
+      <!-- ข้อความเตือนความเสี่ยงการ Clear Cache -->
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">⚠️</span>
+          <div>
+            <h3 class="font-bold text-amber-900 text-sm md:text-base">ข้อควรระวังสำคัญเกี่ยวกับการเก็บข้อมูล!</h3>
+            <p class="text-xs md:text-sm text-amber-800 mt-0.5 leading-relaxed">
+              ระบบนี้บันทึกข้อมูลไว้ภายในเว็บเบราว์เซอร์ของคุณ (Local Storage) <b class="underline">โปรดหลีกเลี่ยงการล้างประวัติเบราว์เซอร์ (Clear Browser History / Cache / Cookies)</b> เพราะจะทำให้ข้อมูลสูญหายทันที
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="text-xl font-bold text-gray-800">หน้า 1: ตั้งค่าระบบ & Master Data</h2>
+
+      <!-- เลขที่เอกสาร -->
+      <div class="border rounded-lg p-5 bg-blue-50/50 border-blue-200">
+        <h3 class="font-bold text-blue-900 mb-3">📄 ตั้งค่ารูปแบบเลขที่ใบกำกับภาษี (Invoice No.)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">นำหน้าชื่อรหัส (Prefix)</label>
+            <input type="text" id="invPrefix" onchange="saveDocConfig()" value="INV-202608-" class="p-2 border rounded w-full font-mono font-bold">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">ลำดับเลขปัจจุบัน (Running Number)</label>
+            <input type="number" id="invRunningNo" onchange="saveDocConfig()" value="1" min="1" class="p-2 border rounded w-full font-mono font-bold">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">ตัวอย่างเลขที่เอกสารถัดไป</label>
+            <div id="invPreviewCode" class="p-2 bg-white border rounded text-blue-600 font-mono font-bold text-base">INV-202608-0001</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ข้อมูลร้านค้า โลโก้ & ลายเซ็น -->
+      <div class="border rounded-lg p-5 bg-gray-50 space-y-4">
+        <h3 class="font-bold text-gray-800">🏢 ข้อมูลผู้ออกใบกำกับภาษี โลโก้ & ลายเซ็น</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-lg border">
+          <!-- Logo Upload -->
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">🖼️ โลโก้ร้านค้า (จัตุรัส 1:1)</label>
+            <input type="file" id="logoFileInput" accept="image/*" class="text-xs text-gray-500 mb-2 w-full"/>
+            <div class="flex items-center gap-3">
+              <div class="w-20 h-20 border border-dashed rounded flex items-center justify-center bg-gray-50 overflow-hidden">
+                <img id="logoPreview" class="w-full h-full object-cover hidden" alt="Logo Preview" />
+                <span id="noLogoText" class="text-[10px] text-gray-400 text-center">ไม่มีโลโก้</span>
+              </div>
+              <button onclick="clearLogo()" class="text-xs text-red-600 hover:underline">ลบโลโก้</button>
+            </div>
+          </div>
+
+          <!-- Signature Upload -->
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">✍️ ลายเซ็นดิจิทัล</label>
+            <input type="file" id="signatureFileInput" accept="image/*" class="text-xs text-gray-500 mb-2 w-full"/>
+            <div class="flex items-center gap-3">
+              <div class="w-36 h-20 border border-dashed rounded flex items-center justify-center bg-gray-50 overflow-hidden">
+                <img id="signaturePreview" class="max-h-full object-contain hidden" alt="Signature Preview" />
+                <span id="noSignatureText" class="text-[10px] text-gray-400 text-center">ไม่มีลายเซ็น</span>
+              </div>
+              <button onclick="clearSignature()" class="text-xs text-red-600 hover:underline">ลบลายเซ็น</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <input type="text" id="sellerName" onchange="saveSellerInfo()" placeholder="ชื่อบริษัท/ร้านค้า" class="p-2 border rounded">
+          <input type="text" id="sellerTaxId" onchange="saveSellerInfo()" placeholder="เลขประจำตัวผู้เสียภาษี" class="p-2 border rounded">
+          <input type="text" id="sellerPhone" onchange="saveSellerInfo()" placeholder="เบอร์โทรศัพท์" class="p-2 border rounded">
+          <input type="text" id="sellerAddress" onchange="saveSellerInfo()" placeholder="ที่อยู่บริษัท" class="p-2 border rounded">
+        </div>
+      </div>
+
+      <!-- 1.1 [CR] บัญชีธนาคาร / ช่องทางชำระเงิน Master Data -->
+      <div class="border rounded-lg p-5 bg-gray-50 space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-gray-800">🏦 จัดการช่องทางชำระเงิน (Master Data)</h3>
+        </div>
+
+        <div class="bg-white p-3 rounded border space-y-3">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            <div>
+              <label class="block font-bold text-gray-700 mb-1">ประเภทช่องทางชำระเงิน Main</label>
+              <select id="newPaymentType" onchange="onPaymentTypeChange()" class="p-2 border rounded w-full bg-white font-bold text-blue-800">
+                <option value="bank">โอนเข้าบัญชีธนาคาร</option>
+                <option value="promptpay">พร้อมเพย์ (PromptPay)</option>
+                <option value="cash">รับเงินสด</option>
+                <option value="cheque">เช็คสั่งจ่าย</option>
+                <option value="other">อื่นๆ</option>
+              </select>
+            </div>
+            
+            <div id="dynamicPayInputs" class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <!-- Dynamic Fields Rendering Target -->
+            </div>
+          </div>
+
+          <div class="flex justify-end pt-1">
+            <button onclick="addPaymentChannel()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded text-xs shadow">
+              + เพิ่มช่องทางชำระเงิน
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto mt-2 border rounded bg-white">
+          <table class="min-w-full text-xs text-left">
+            <thead class="bg-gray-100 border-b">
+              <tr>
+                <th class="p-2">ประเภท</th>
+                <th class="p-2">รายละเอียด / ชื่อบัญชี / เลขที่</th>
+                <th class="p-2 text-center">ตั้งเป็น Default</th>
+                <th class="p-2 text-center">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="paymentChannelsTable">
+              <tr><td colspan="4" class="p-3 text-center text-gray-400">ยังไม่มีรายการช่องทางชำระเงิน</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- รายการสินค้า นำเข้าจาก Excel -->
+      <div class="border rounded-lg p-5 bg-gray-50 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-gray-800">📦 รายการสินค้า Master Data (นำเข้าไฟล์ Excel)</h3>
+          <button onclick="clearProducts()" class="text-xs text-red-600 hover:underline">ล้างสินค้าทั้งหมด</button>
+        </div>
+
+        <!-- Card Header สรุปข้อมูลการนำเข้าล่าสุด -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-lg border shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="p-3 bg-blue-100 text-blue-600 rounded-lg font-bold text-xl">📦</div>
+            <div>
+              <p class="text-xs text-gray-500 font-semibold">จำนวนรายการสินค้าทั้งหมด</p>
+              <p id="p1TotalCount" class="text-lg font-bold text-blue-900">0 รายการ</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="p-3 bg-green-100 text-green-600 rounded-lg font-bold text-xl">🕒</div>
+            <div>
+              <p class="text-xs text-gray-500 font-semibold">อัปเดตล่าสุด (Last Updated)</p>
+              <p id="p1LastUpdated" class="text-xs font-bold text-gray-700">ยังไม่มีการนำเข้าข้อมูล</p>
+            </div>
+          </div>
+        </div>
+
+        <input type="file" id="excelFile" accept=".xlsx, .xls" class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+
+        <div class="overflow-x-auto max-h-60 overflow-y-auto border rounded bg-white">
+          <table class="min-w-full text-xs">
+            <thead class="sticky top-0 bg-gray-100 border-b text-gray-700 font-bold">
+              <tr>
+                <th class="p-2 text-left">SKU / รหัส</th>
+                <th class="p-2 text-left">หมวด</th>
+                <th class="p-2 text-left">ชื่อสินค้า</th>
+                <th class="p-2 text-left">สถานะ</th>
+                <th class="p-2 text-right">ขายส่ง</th>
+                <th class="p-2 text-right">ขายปลีก</th>
+                <th class="p-2 text-right">FB</th>
+                <th class="p-2 text-right">Shopee</th>
+                <th class="p-2 text-right">TikTok</th>
+                <th class="p-2 text-right">Lazada</th>
+                <th class="p-2 text-right">อื่นๆ</th>
+              </tr>
+            </thead>
+            <tbody id="productListTable">
+              <tr><td colspan="11" class="p-4 text-center text-gray-400">ยังไม่มีรายการสินค้า</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button onclick="switchPage(2)" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium shadow hover:bg-blue-700">ไปยังหน้าประวัติการสั่งซื้อ &rarr;</button>
+      </div>
+    </div>
+
+    <!-- ================= หน้า 2: รายการใบเสร็จ / ออเดอร์ (Order List) ================= -->
+    <div id="page2" class="page bg-white p-6 rounded-b-lg shadow-md space-y-6">
+      
+      <div class="bg-red-50 border-l-4 border-red-600 p-4 rounded-r-lg shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">🚨</span>
+          <div>
+            <h3 class="font-bold text-red-900 text-sm md:text-base">ข้อเตือนจำเป็น: สำรองข้อมูลก่อนเปลี่ยนเครื่องหรือล้างเบราว์เซอร์!</h3>
+            <p class="text-xs md:text-sm text-red-800 mt-0.5 leading-relaxed">
+              หากต้องการเปลี่ยนเครื่อง หรือล้างประวัติเว็บ กรุณากดปุ่ม <b>"Export ประวัติเป็น Excel"</b> สำรองข้อมูลไว้ก่อนทุกครั้ง
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">หน้า 2: รายการออเดอร์ / ประวัติการสั่งซื้อ</h2>
+          <p class="text-xs text-gray-500">จัดการ คัดลอก แก้ไข ยกเลิกออเดอร์ หรือลบข้อมูลจากระบบ</p>
+        </div>
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <button id="batchDeleteBtn" onclick="confirmBatchDelete()" class="hidden bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-lg font-bold shadow text-sm flex items-center gap-2">
+            🗑️ ลบรายการที่เลือก (<span id="selectedCountText">0</span>)
+          </button>
+          <button onclick="createNewInvoice()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold shadow text-sm flex items-center gap-2">
+            ➕ สร้างรายการใหม่
+          </button>
+          <button onclick="exportHistoryExcel()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg font-bold shadow text-sm flex items-center gap-2">
+            📊 Export ประวัติเป็น Excel
+          </button>
+        </div>
+      </div>
+
+      <!-- ช่องค้นหาข้อมูลลูกค้าเก่า -->
+      <div class="bg-gray-50 p-4 rounded-lg border flex flex-col md:flex-row items-center gap-3">
+        <span class="text-xs font-bold text-gray-700 whitespace-nowrap">🔍 ค้นหาเอกสาร/ลูกค้า:</span>
+        <input type="text" id="searchHistoryInput" oninput="renderHistoryTable()" placeholder="พิมพ์ชื่อลูกค้า เบอร์โทร หรือเลขที่ใบกำกับภาษี..." class="p-2 border rounded text-xs w-full bg-white">
+      </div>
+
+      <div class="overflow-x-auto border rounded-lg">
+        <table class="min-w-full bg-white text-xs">
+          <thead>
+            <tr class="bg-gray-100 border-b text-gray-700 font-bold">
+              <th class="p-3 text-center w-10">
+                <input type="checkbox" id="selectAllHeader" onchange="toggleSelectAll(this)" class="w-4 h-4 text-blue-600 rounded cursor-pointer">
+              </th>
+              <th class="p-3 text-left">เลขที่เอกสาร</th>
+              <th class="p-3 text-center">ช่องทางขาย</th>
+              <th class="p-3 text-left">วันที่</th>
+              <th class="p-3 text-left">ชื่อลูกค้า / เบอร์โทร</th>
+              <th class="p-3 text-right">ยอดเงินรวม</th>
+              <th class="p-3 text-center">สถานะ</th>
+              <th class="p-3 text-center">จัดการเอกสาร</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr><td colspan="8" class="p-6 text-center text-gray-400">ยังไม่มีประวัติการสั่งซื้อ</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= หน้า 3: แก้ไขรายละเอียดสินค้าและคำนวณราคา (Itemization & Calculation) ================= -->
+    <div id="page3" class="page bg-white p-6 rounded-b-lg shadow-md space-y-6">
+      
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b pb-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">หน้า 3: แก้ไขรายละเอียดสินค้าและคำนวณราคา</h2>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-xs font-bold text-gray-500">เลขที่ใบกำกับปัจจุบัน:</span>
+            <span id="page3CurrentInvNo" class="font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200 text-sm">INV-xxxxxx</span>
+          </div>
+        </div>
+
+        <div id="editingBanner" class="hidden bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300">
+          ✏️ กำลังอยู่ในโหมดแก้ไขเอกสาร: <span id="editingInvNo"></span>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- ข้อมูลลูกค้า -->
+        <div class="md:col-span-2 bg-gray-50 p-4 rounded-lg border space-y-3">
+          <h3 class="font-bold text-gray-800 text-sm">👤 ข้อมูลลูกค้า</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <input type="text" id="buyerName" maxlength="200" placeholder="นามลูกค้า / บริษัท (สูงสุด 200 ตัวอักษร)" class="p-2 border rounded col-span-1 md:col-span-2">
+            <input type="text" id="buyerTaxId" placeholder="เลขประจำตัวผู้เสียภาษี" class="p-2 border rounded">
+            <input type="text" id="buyerPhone" placeholder="เบอร์โทรศัพท์" class="p-2 border rounded">
+            <input type="text" id="buyerAddress" placeholder="ที่อยู่" class="p-2 border rounded col-span-1 md:col-span-2">
+          </div>
+        </div>
+
+        <!-- เงื่อนไขการชำระเงิน, ช่องทางจำหน่าย & VAT -->
+        <div class="bg-blue-50/60 p-4 rounded-lg border border-blue-200 space-y-3">
+          <h3 class="font-bold text-blue-900 text-sm">⚙️ ช่องทางขาย & เงื่อนไขชำระเงิน</h3>
+          
+          <div>
+            <label class="block text-xs font-bold text-blue-900 mb-1">🛒 ช่องทางจำหน่าย (Sales Channel)</label>
+            <select id="salesChannel" onchange="onSalesChannelChange()" class="p-1.5 border rounded w-full text-sm font-bold bg-white text-blue-700">
+              <option value="retail" selected>ขายปลีก</option>
+              <option value="wholesale">ขายส่ง</option>
+              <option value="facebook">Facebook</option>
+              <option value="shopee">Shopee</option>
+              <option value="tiktok">TikTok</option>
+              <option value="lazada">Lazada</option>
+              <option value="custom">กำหนดราคาเอง (Custom)</option>
+            </select>
+          </div>
+
+          <div class="space-y-2 border-t border-b py-2 border-blue-200">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="enableCreditTerm" onchange="toggleCreditTerm()" class="w-4 h-4 text-blue-600 rounded cursor-pointer">
+              <label for="enableCreditTerm" class="text-xs font-bold text-gray-700 cursor-pointer">กำหนดเครดิตเทอม (Credit Term)</label>
+            </div>
+            
+            <div id="creditTermInputs" class="space-y-2 hidden">
+              <div>
+                <label class="block text-[11px] font-semibold text-gray-600 mb-1">เครดิตเทอม (วัน)</label>
+                <input type="number" id="creditDays" value="30" min="1" onchange="calculateDueDate()" class="p-1.5 border rounded w-full text-sm font-bold bg-white">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-gray-600 mb-1">วันครบกำหนด (Due Date)</label>
+                <input type="date" id="dueDateInput" class="p-1.5 border rounded w-full text-sm bg-white">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">ประเภทภาษี (VAT Type)</label>
+            <select id="vatType" class="p-1.5 border rounded w-full text-sm font-bold bg-white text-blue-700">
+              <option value="exclude" selected>Exclude VAT (ราคาไม่รวมภาษี +7%)</option>
+              <option value="include">Include VAT (ราคารวมภาษีแล้ว)</option>
+              <option value="zero">Zero VAT / Non-VAT (ยกเว้นภาษี 0%)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- เลือกรายการสินค้า & ระบบคำนวณแบบ 2-Way Auto-Calculation -->
+      <div class="bg-gray-50 p-4 rounded-lg border space-y-3">
+        <h3 class="font-bold text-gray-800 text-sm">🛒 เลือกรายการสินค้า & คำนวณราคา</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-3 relative">
+            <label class="block text-xs text-gray-500 mb-1">ค้นหาสินค้า</label>
+            <input type="text" id="searchProductInput" oninput="filterProducts()" onfocus="showSearchResults()" placeholder="ค้นหารายการ..." class="w-full p-2 border rounded text-sm">
+            <div id="searchResults" class="absolute left-0 right-0 top-full mt-1 bg-white border rounded-lg shadow-xl max-h-60 overflow-y-auto hidden z-50"></div>
+          </div>
+
+          <!-- ลำดับ 1: กรอก จำนวนชิ้น -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-bold text-gray-700 mb-1">1. จำนวน (Quantity)</label>
+            <div class="flex border bg-white rounded">
+              <button onclick="adjustQty(-1)" class="w-8 py-1 bg-gray-100 font-bold">-</button>
+              <input type="number" id="itemQty" value="1" min="1" oninput="onQtyOrPriceChange('qty')" class="w-full text-center font-bold text-sm">
+              <button onclick="adjustQty(1)" class="w-8 py-1 bg-gray-100 font-bold">+</button>
+            </div>
+          </div>
+
+          <!-- 2-Way: ราคาต่อชิ้น -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-bold text-blue-800 mb-1">ราคาต่อชิ้น (฿)</label>
+            <input type="number" id="unitPriceInput" value="0" min="0" step="0.01" oninput="onQtyOrPriceChange('unit')" class="w-full p-2 border rounded text-sm font-bold bg-blue-50/50">
+          </div>
+
+          <!-- 2-Way: ราคารวมของ SKU -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-bold text-green-800 mb-1">ราคารวม SKU (฿)</label>
+            <input type="number" id="totalSkuPriceInput" value="0" min="0" step="0.01" oninput="onQtyOrPriceChange('total')" class="w-full p-2 border rounded text-sm font-bold bg-green-50/50">
+          </div>
+
+          <!-- ส่วนลดต่อชิ้น -->
+          <div class="md:col-span-2">
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-500">ส่วนลด/ชิ้น</label>
+              <select id="unitDiscountType" onchange="onQtyOrPriceChange('unit')" class="text-[10px] border rounded bg-white font-bold text-blue-700">
+                <option value="THB">บาท</option>
+                <option value="PERCENT">%</option>
+              </select>
+            </div>
+            <input type="number" id="unitDiscountInput" value="0" min="0" step="0.01" oninput="onQtyOrPriceChange('unit')" class="w-full p-2 border rounded text-sm">
+          </div>
+
+          <div class="md:col-span-1">
+            <button onclick="addItemToInvoice()" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded text-sm shadow">+ เพิ่ม</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-white border rounded text-xs">
+            <thead>
+              <tr class="bg-gray-100 border-b text-gray-700">
+                <th class="p-2 text-left">รายละเอียด</th>
+                <th class="p-2 text-center">จำนวน</th>
+                <th class="p-2 text-right">ราคา/หน่วย</th>
+                <th class="p-2 text-right">ส่วนลด/ชิ้น</th>
+                <th class="p-2 text-right">รวมคำนวณ</th>
+                <th class="p-2 text-center">ลบ</th>
+              </tr>
+            </thead>
+            <tbody id="invoiceItemsTable">
+              <tr><td colspan="6" class="p-4 text-center text-gray-400">ยังไม่ได้เลือกสินค้า</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ส่วนลดท้ายบิล, ค่าขนส่ง, ส่วนลด Platform & หมายเหตุ + เลือกช่องทางชำระเงิน -->
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <!-- ช่องกรอกค่าขนส่ง -->
+          <div class="bg-amber-50 p-4 rounded-lg border border-amber-200 flex flex-col justify-between">
+            <div>
+              <h4 class="font-bold text-amber-900 text-sm">🚚 ค่าขนส่ง (Shipping Fee)</h4>
+              <p class="text-xs text-amber-700">ค่าบริการจัดส่งสินค้า (บวกเพิ่มก่อนคำนวณภาษี)</p>
+            </div>
+            <div class="flex items-center gap-2 mt-3">
+              <span class="text-sm font-bold text-amber-900">จำนวนเงิน:</span>
+              <input type="number" id="shippingFeeInput" value="0" min="0" step="0.01" class="p-2 border rounded w-full text-right font-bold text-amber-800 bg-white">
+              <span class="text-xs font-bold text-amber-900">บาท</span>
+            </div>
+          </div>
+
+          <!-- ส่วนลดร้านค้า (ท้ายบิล) -->
+          <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 flex flex-col justify-between">
+            <div>
+              <h4 class="font-bold text-blue-900 text-sm">🏷️ ส่วนลดร้านค้า (ท้ายบิล)</h4>
+              <p class="text-xs text-blue-700">ส่วนลดโปรโมชันที่ร้านค้าให้กับลูกค้า</p>
+            </div>
+            <div class="flex items-center gap-2 mt-3">
+              <input type="number" id="billDiscount" value="0" min="0" step="0.01" class="p-2 border rounded w-full text-right font-bold text-red-600 bg-white">
+              <select id="billDiscountType" class="p-2 border rounded text-xs font-bold bg-white text-blue-700">
+                <option value="THB">บาท</option>
+                <option value="PERCENT">%</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- ช่องกรอกส่วนลดพิเศษจาก Platform -->
+          <div class="bg-purple-50 p-4 rounded-lg border border-purple-200 flex flex-col justify-between">
+            <div>
+              <h4 class="font-bold text-purple-900 text-sm">💜 ส่วนลดพิเศษจาก Platform</h4>
+              <p class="text-xs text-purple-700">ส่วนลดที่ Platform สนับสนุน (หักจากยอดชำระสุทธิ)</p>
+            </div>
+            <div class="flex items-center gap-2 mt-3">
+              <span class="text-sm font-bold text-purple-900">ส่วนลด:</span>
+              <input type="number" id="platformDiscountInput" value="0" min="0" step="0.01" class="p-2 border rounded w-full text-right font-bold text-purple-800 bg-white">
+              <span class="text-xs font-bold text-purple-900">บาท</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 3.1 เลือกช่องทางการชำระเงินในหน้า 3 & นำไปแสดงในหมายเหตุ -->
+        <div class="bg-blue-50/40 p-4 rounded-lg border border-blue-200 space-y-3">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h4 class="font-bold text-blue-900 text-sm">💳 เลือกช่องทางชำระเงินที่ต้องการระบุในหมายเหตุท้ายบิล (เลือกได้มากกว่า 1 บัญชี)</h4>
+              <p class="text-xs text-blue-700">ติ๊กเลือกบัญชีที่ต้องการ แล้วกดปุ่มแทรกลงในหมายเหตุ</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="toggleAllPayChannels(true)" class="text-[11px] text-blue-700 hover:underline">เลือกทั้งหมด</button>
+              <span class="text-gray-300">|</span>
+              <button onclick="toggleAllPayChannels(false)" class="text-[11px] text-gray-500 hover:underline">ล้างการเลือก</button>
+              <button onclick="appendSelectedPaymentChannelsToNote()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold shadow transition ml-2">
+                ➕ แทรกช่องทางที่เลือกลงในหมายเหตุ
+              </button>
+            </div>
+          </div>
+
+          <div id="page3PaymentChannelsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            <!-- Dynamic Checkboxes Rendering Target -->
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- หมายเหตุประจำเอกสาร -->
+          <div class="bg-gray-50 p-4 rounded-lg border space-y-2">
+            <h4 class="font-bold text-gray-800 text-sm">📝 หมายเหตุประจำเอกสาร (แสดงท้ายบิล)</h4>
+            <textarea id="documentNote" rows="3" placeholder="ระบุเงื่อนไขการชำระเงิน ข้อความเพิ่มเติม หรือเลือกจากช่องทางรับเงินด้านบน..." class="p-2 border rounded w-full text-xs bg-white"></textarea>
+          </div>
+
+          <div class="bg-gray-50 p-4 rounded-lg border flex items-center gap-3">
+            <input type="checkbox" id="useSignatureCheckbox" checked class="w-4 h-4 text-blue-600 rounded cursor-pointer">
+            <label for="useSignatureCheckbox" class="text-sm font-bold text-gray-800 cursor-pointer">
+              แสดงลายเซ็นอิเล็กทรอนิกส์ของร้านค้าในใบเสร็จ
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Footer Controls -->
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t">
+        <button onclick="resetFormToNew()" class="text-gray-500 hover:text-gray-800 text-sm flex items-center gap-1">🔄 ล้างฟอร์ม (เริ่มสร้างรายการใหม่)</button>
+        
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <!-- Save Button -->
+          <button id="saveInvoiceBtn" onclick="saveAndGenerateInvoice()" class="w-full sm:w-auto bg-green-600 text-white px-8 py-2.5 rounded-lg font-bold shadow hover:bg-green-700 flex items-center justify-center gap-2">
+            💾 บันทึกและสรุปยอดเงิน
+          </button>
+          
+          <!-- View PDF Button -->
+          <button id="goToPdfBtn" onclick="switchPage(4)" class="hidden w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold shadow hover:bg-blue-700 flex items-center justify-center gap-2">
+            👁️ ดูใบกำกับภาษี / ใบเสร็จ (A4) &rarr;
+          </button>
+          
+          <!-- Edit Toggle Button -->
+          <button id="unlockEditBtn" onclick="unlockFormForEdit()" class="hidden text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold px-4 py-2.5 rounded-lg">
+            🔓 ปลดล็อคเพื่อแก้ไข
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= หน้า 4: หน้าสรุปยอดเงินและใบเสร็จ (Summary & Receipt View A4) ================= -->
+    <div id="page4" class="page">
+      <div class="no-print flex justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm">
+        <button onclick="switchPage(3)" class="text-blue-600 hover:underline font-medium">&larr; แก้ไขข้อมูลคำนวณราคา</button>
+        <div class="flex gap-2">
+          <button onclick="printDocument()" class="bg-gray-800 hover:bg-gray-900 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2 text-sm">
+            🖨️ พิมพ์เอกสาร
+          </button>
+      <button onclick="exportPDF()" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-medium shadow flex items-center gap-2 text-sm">
+        picture_as_pdf บันทึกเป็น PDF (A4)
+      </button>        </div>
+      </div>
+
+      <div class="overflow-x-auto pb-8">
+        <div id="taxInvoicePrint" class="a4-page flex flex-col justify-between text-gray-800 text-xs">
+          <div id="cancelledWatermark" class="watermark-cancelled hidden">CANCELLED</div>
+          <div>
+            <!-- Header (Logo + Seller Info) -->
+            <div class="flex justify-between border-b pb-3 mb-3 items-start">
+              <div class="w-3/5 flex gap-3 items-start">
+                <div id="invLogoContainer" class="w-14 h-14 shrink-0 hidden">
+                  <img id="invLogoImg" class="w-full h-full object-cover rounded" alt="Logo" />
+                </div>
+                <div>
+                  <h1 class="text-base font-bold text-gray-900" id="invSellerName">บริษัท ตัวอย่าง จำกัด</h1>
+                  <p class="text-gray-600 mt-0.5 text-[11px]" id="invSellerAddress">ที่อยู่...</p>
+                  <p class="text-gray-600 text-[11px]">เลขประจำตัวผู้เสียภาษี: <span id="invSellerTaxId">-</span></p>
+                  <p class="text-gray-600 text-[11px]">โทร: <span id="invSellerPhone">-</span></p>
+                </div>
+              </div>
+
+              <div class="w-2/5 text-right">
+                <h2 class="text-base font-bold text-gray-900">ใบกำกับภาษี / ใบเสร็จรับเงิน</h2>
+                <p class="text-gray-500 font-semibold uppercase text-[10px]">TAX INVOICE / RECEIPT</p>
+                <div class="mt-1 space-y-0.5 text-[11px]">
+                  <p><b>เลขที่:</b> <span id="invNo" class="font-mono font-bold text-gray-900">INV-202608-0001</span></p>
+                  <p><b>วันที่:</b> <span id="invDate"></span></p>
+                  <p><b>ช่องทางขาย:</b> <span id="invChannelDisplay" class="font-bold text-blue-700">ขายปลีก</span></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Customer -->
+            <div class="mb-3 p-2 border rounded leading-tight bg-gray-50 flex justify-between text-[11px]">
+              <div class="w-2/3 pr-2">
+                <p class="break-words"><b>นามลูกค้า:</b> <span id="invBuyerName" class="break-words font-medium">-</span></p>
+                <p class="break-words"><b>ที่อยู่:</b> <span id="invBuyerAddress">-</span></p>
+                <p><b>เลขประจำตัวผู้เสียภาษี:</b> <span id="invBuyerTaxId">-</span> &nbsp;|&nbsp; <b>โทร:</b> <span id="invBuyerPhone">-</span></p>
+              </div>
+              <div class="w-1/3 text-right">
+                <span id="invVatBadge" class="inline-block bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded border border-blue-300 text-[10px]">
+                  Exclude VAT
+                </span>
+              </div>
+            </div>
+
+            <!-- Table -->
+            <table class="w-full border-collapse text-[11px] mb-3">
+              <thead>
+                <tr class="bg-[#2B8CC4] text-white font-semibold">
+                  <th class="p-1.5 text-center w-8">#</th>
+                  <th class="p-1.5 text-left">รายละเอียด</th>
+                  <th class="p-1.5 text-center w-16">จำนวน</th>
+                  <th class="p-1.5 text-right w-20">ราคา/หน่วย</th>
+                  <th class="p-1.5 text-right w-16">ส่วนลด</th>
+                  <th class="p-1.5 text-right w-20">มูลค่า</th>
+                </tr>
+              </thead>
+              <tbody id="invDisplayItems">
+                <!-- Items Render -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 4.1 & 4.2 Summary Section (ตัดตัวเลขลำดับ 1-9 ออกเรียบร้อย) -->
+          <div>
+            <div class="flex justify-between items-end border-t pt-2">
+              <div class="w-1/2 pr-3 space-y-2">
+                <p id="thaiBahtText" class="font-bold text-gray-800 text-[11px]">(บาทถ้วน)</p>
+                
+                <div class="p-2 bg-gray-50 border rounded text-[10px] space-y-1">
+                  <p class="font-bold text-gray-700">💳 เงื่อนไขชำระเงิน & หมายเหตุ:</p>
+                  <p id="invCreditDisplay" class="text-blue-900 font-semibold border-b pb-1 mb-1 border-gray-200">เงื่อนไข: ไม่มีเครดิต</p>
+                  <!-- ขยายความสูง max-h เดิม 24 (96px) เพิ่มขึ้น 40% เป็น max-h-[135px] -->
+                  <p id="invDocumentNote" class="text-gray-600 whitespace-pre-line text-[10px] max-h-[135px] overflow-y-auto">-</p>
+                </div>
+              </div>
+
+              <!-- ตารางการคำนวณเงิน (ตัดตัวเลขนำหน้าออกเรียบร้อยตาม CR 4.2) -->
+              <div class="w-1/2 space-y-0.5 text-right text-[11px]">
+                <div class="flex justify-between">
+                  <span class="text-gray-600">รวมเป็นเงิน (Subtotal)</span>
+                  <span id="invSubtotal" class="font-medium">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">ค่าขนส่ง (Shipping Fee)</span>
+                  <span id="invShippingFee" class="font-medium">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between text-red-600">
+                  <span>หัก ส่วนลดร้านค้า (ท้ายบิล)</span>
+                  <span id="invShopDiscount" class="font-medium">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between font-semibold text-gray-800 border-t border-dashed pt-0.5">
+                  <span>มูลค่าหลังหักส่วนลดร้านค้า</span>
+                  <span id="invAfterShopDiscount">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">ภาษีมูลค่าเพิ่ม 7% (VAT 7%)</span>
+                  <span id="invVat" class="font-medium">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between text-gray-500 text-[10px]">
+                  <span>ราคาไม่รวมภาษีมูลค่าเพิ่ม</span>
+                  <span id="invExVat">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between font-bold text-gray-900 border-t border-gray-300 pt-0.5">
+                  <span>จำนวนเงินรวมทั้งสิ้น (Grand Total)</span>
+                  <span id="invGrandTotal">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between text-purple-700">
+                  <span>หัก ส่วนลดพิเศษจาก Platform</span>
+                  <span id="invPlatformDiscount" class="font-medium">0.00 บาท</span>
+                </div>
+                <div class="flex justify-between font-bold text-xs text-blue-700 border-t-2 border-blue-600 pt-1">
+                  <span>ยอดเงินที่ลูกค้าต้องชำระจริง (Net Payment)</span>
+                  <span id="invNetPayment" class="font-bold">0.00 บาท</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Signature Section -->
+            <div class="grid grid-cols-2 gap-6 text-center text-[10px] mt-4 pt-2 border-t">
+              <div>
+                <div class="border-b border-gray-400 mb-1 h-10"></div>
+                <p>ผู้รับสินค้า / Received By</p>
+                <p class="text-gray-400">วันที่ ...../...../..........</p>
+              </div>
+              <div>
+                <div class="border-b border-gray-400 mb-1 h-10 flex items-end justify-center relative">
+                  <img id="invSignatureImg" class="max-h-10 absolute bottom-1 hidden" alt="Signature" />
+                </div>
+                <p>ผู้มีอำนาจลงนาม / Authorized Signature</p>
+                <p class="text-gray-400">วันที่ ...../...../..........</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal ใบลดหนี้ (Credit Note) -->
+    <div id="creditNoteModal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center border-b pb-3 no-print">
+          <h3 class="font-bold text-lg text-gray-800">📄 ใบลดหนี้ / ใบกำกับภาษี (Credit Note)</h3>
+          <div class="space-x-2">
+            <button onclick="exportCreditNotePDF()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded text-xs font-bold">PDF ใบลดหนี้</button>
+            <button onclick="closeCreditNoteModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1.5 rounded text-xs font-bold">ปิด</button>
+          </div>
+        </div>
+
+        <div id="creditNotePrint" class="a4-page text-xs p-6 bg-white border">
+          <div class="flex justify-between border-b pb-4 mb-4">
+            <div>
+              <h2 class="text-base font-bold text-gray-900" id="cnSellerName">-</h2>
+              <p class="text-gray-600" id="cnSellerAddress">-</p>
+              <p class="text-gray-600">เลขประจำตัวผู้เสียภาษี: <span id="cnSellerTaxId">-</span></p>
+            </div>
+            <div class="text-right">
+              <h2 class="text-lg font-bold text-red-600">ใบลดหนี้ / ใบกำกับภาษี</h2>
+              <p class="text-gray-500 font-semibold">CREDIT NOTE</p>
+              <p class="mt-2"><b>เลขที่ใบลดหนี้:</b> <span id="cnNo" class="font-mono font-bold text-gray-900">-</span></p>
+              <p><b>วันที่:</b> <span id="cnDate">-</span></p>
+              <p><b>อ้างอิงใบกำกับภาษีเดิม:</b> <span id="cnRefInv" class="font-mono font-bold text-blue-600">-</span></p>
+            </div>
+          </div>
+
+          <div class="mb-4 p-2.5 border rounded bg-gray-50">
+            <p><b>นามลูกค้า:</b> <span id="cnBuyerName">-</span></p>
+            <p><b>ที่อยู่:</b> <span id="cnBuyerAddress">-</span></p>
+            <p><b>เลขผู้เสียภาษี:</b> <span id="cnBuyerTaxId">-</span></p>
+          </div>
+
+          <table class="w-full border-collapse text-xs mb-4">
+            <thead>
+              <tr class="bg-red-600 text-white font-semibold">
+                <th class="p-2 text-left">รายการสาเหตุที่ออกใบลดหนี้</th>
+                <th class="p-2 text-right w-32">มูลค่าเดิม</th>
+                <th class="p-2 text-right w-32">มูลค่าที่ถูกต้อง</th>
+                <th class="p-2 text-right w-32">ผลต่างใบลดหนี้</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b">
+                <td class="p-3">ยกเลิกรายการตามใบกำกับภาษีเดิม (สินค้าชำรุด/รับคืนสินค้า/ยกเลิกสัญญา)</td>
+                <td class="p-3 text-right" id="cnOldTotal">0.00</td>
+                <td class="p-3 text-right">0.00</td>
+                <td class="p-3 text-right font-bold text-red-600" id="cnDiffTotal">0.00</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="flex justify-between items-end border-t pt-4">
+            <div class="w-1/2">
+              <p id="cnThaiBahtText" class="font-bold text-gray-800 text-xs">(บาทถ้วน)</p>
+            </div>
+            <div class="w-1/2 space-y-1.5 text-right">
+              <div class="flex justify-between">
+                <span class="text-gray-600">มูลค่ารับคืน/ลดหนี้สุทธิ</span>
+                <span id="cnNetDiff" class="font-medium">0.00 บาท</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-600">ภาษีมูลค่าเพิ่ม 7%</span>
+                <span id="cnVatDiff" class="font-medium">0.00 บาท</span>
+              </div>
+              <div class="flex justify-between font-bold text-sm pt-1 border-t border-gray-400">
+                <span>จำนวนเงินรวมใบลดหนี้</span>
+                <span id="cnGrandDiff" class="font-bold text-red-600">0.00 บาท</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Cropper -->
+    <div id="cropperModal" class="fixed inset-0 bg-black/80 hidden z-[100] flex items-center justify-center p-4">
+      <div class="bg-white rounded-lg shadow-2xl max-w-xl w-full p-5 space-y-4">
+        <h3 id="cropperTitle" class="font-bold text-gray-800 border-b pb-2 text-base">✂️ ครอบตัดรูปภาพ (Crop Image)</h3>
+        <div class="max-h-[60vh] overflow-hidden flex justify-center bg-gray-900 rounded">
+          <img id="cropperImage" class="max-w-full" src="" alt="Crop Area">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button onclick="closeCropperModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded text-xs hover:bg-gray-300">ยกเลิก</button>
+          <button onclick="applyCropImage()" class="px-5 py-2 bg-blue-600 text-white font-bold rounded text-xs hover:bg-blue-700 shadow">ครอบตัด & บันทึก</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Copy Options -->
+    <div id="copyOptionsModal" class="fixed inset-0 bg-black/60 hidden z-[90] flex items-center justify-center p-4">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
+        <div class="text-center">
+          <span class="text-4xl">📋</span>
+          <h3 class="font-bold text-lg text-gray-800 mt-2">คัดลอกข้อมูลรายการ</h3>
+          <p class="text-xs text-gray-500 mt-1">คุณต้องการจัดการรายการสินค้าในใบสั่งซื้ออย่างไร?</p>
+        </div>
+        
+        <div class="space-y-2 pt-2">
+          <button onclick="executeCopyOrder(true)" class="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left transition flex items-center gap-3">
+            <span class="text-xl">🛍️</span>
+            <div>
+              <div class="font-bold text-blue-900 text-xs">คัดลอกรายการสินค้าเดิมมาด้วย</div>
+              <div class="text-[11px] text-blue-700">ดึงทั้งชื่อลูกค้าและรายการสินค้าทั้งหมดจากบิลนี้</div>
+            </div>
+          </button>
+
+          <button onclick="executeCopyOrder(false)" class="w-full p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left transition flex items-center gap-3">
+            <span class="text-xl">🗑️</span>
+            <div>
+              <div class="font-bold text-amber-900 text-xs">ล้างรายการสินค้า (คัดลอกเฉพาะข้อมูลลูกค้า)</div>
+              <div class="text-[11px] text-amber-700">ดึงชื่อ/ที่อยู่ลูกค้าเดิม แต่เริ่มเลือกสินค้าใหม่</div>
+            </div>
+          </button>
+        </div>
+
+        <div class="pt-2 text-center border-t">
+          <button onclick="closeCopyModal()" class="text-xs text-gray-500 hover:text-gray-800 font-bold">ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Global Application State
+    let state = {
+      docConfig: { prefix: 'INV-202608-', runningNo: 1 },
+      sellerInfo: { name: '', taxId: '', phone: '', address: '' },
+      logoImg: null,
+      signatureImg: null,
+      products: [],
+      productsLastUpdated: null,
+      paymentChannels: [],
+      orderHistory: [],
+      currentInvoiceItems: [],
+      selectedProductForInput: null,
+      editingIndex: -1, // -1 หมายถึงไม่ได้อยู่ในโหมดแก้ไข (กำลังสร้างรายการใหม่)
+      cropper: null,
+      currentCropType: null,
+      copySourceOrder: null
+    };
+
+    // Initialize System
+    window.onload = function() {
+      loadLocalStorageData();
+      renderPage1();
+      renderHistoryTable();
+      renderPage3PaymentChannels();
+      updateInvoiceNumberPreview();
+      
+      // Excel File Import Handler
+      document.getElementById('excelFile').addEventListener('change', handleExcelImport);
+      
+
+    // Image Upload Handlers
+      const logoInput = document.getElementById('logoFileInput');
+      if (logoInput) {
+        logoInput.addEventListener('click', function() { this.value = ''; });
+        logoInput.addEventListener('change', (e) => initCropImage(e, 'logo'));
+      }
+
+      const signatureInput = document.getElementById('signatureFileInput');
+      if (signatureInput) {
+        signatureInput.addEventListener('click', function() { this.value = ''; });
+        signatureInput.addEventListener('change', (e) => initCropImage(e, 'signature'));
+      }
+    };
+
+    // Load Local Storage Data
+    function loadLocalStorageData() {
+      const doc = localStorage.getItem('tax_doc_config');
+      if (doc) state.docConfig = JSON.parse(doc);
+      
+      const seller = localStorage.getItem('tax_seller_info');
+      if (seller) state.sellerInfo = JSON.parse(seller);
+      
+      state.logoImg = localStorage.getItem('tax_logo_img');
+      state.signatureImg = localStorage.getItem('tax_signature_img');
+      
+      const prods = localStorage.getItem('tax_products');
+      if (prods) state.products = JSON.parse(prods);
+
+      state.productsLastUpdated = localStorage.getItem('tax_products_updated');
+
+      // 1.1 Data Migration & Backward Compatibility for paymentChannels
+      const pays = localStorage.getItem('tax_payment_channels');
+      if (pays) {
+        try {
+          const rawPays = JSON.parse(pays);
+          state.paymentChannels = rawPays.map(p => {
+            if (p.type) return p; // New Version Already
+            // Old Version Conversion (backward compatibility)
+            return {
+              id: p.id || Date.now() + Math.random(),
+              type: 'bank',
+              bankName: p.bankName || '',
+              accNo: p.accNo || '',
+              accName: p.accName || '',
+              isDefault: !!p.isDefault
+            };
+          });
+        } catch (e) {
+          state.paymentChannels = [];
+        }
+      } else {
+        state.paymentChannels = [];
+      }
+
+      const history = localStorage.getItem('tax_order_history');
+      if (history) state.orderHistory = JSON.parse(history);
+    }
+
+    // Page Navigation
+    function switchPage(pageNum) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page' + pageNum).classList.add('active');
+
+      // Update Nav Buttons
+      for (let i = 1; i <= 4; i++) {
+        const btn = document.getElementById('tab' + i);
+        if (btn) {
+          if (i === pageNum) {
+            btn.className = 'py-3 px-6 font-bold border-b-2 border-blue-600 text-blue-600 whitespace-nowrap';
+          } else {
+            btn.className = 'py-3 px-6 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap';
+          }
+        }
+      }
+
+      // Show/Hide Tabs 3 & 4
+      if (pageNum === 3 || pageNum === 4) {
+        document.getElementById('tab3').classList.remove('hidden');
+        document.getElementById('tab4').classList.remove('hidden');
+      }
+
+      if (pageNum === 1) renderPage1();
+      if (pageNum === 2) renderHistoryTable();
+      if (pageNum === 3) renderPage3PaymentChannels();
+      if (pageNum === 4) renderA4Document();
+    }
+
+    // ================= PAGE 1 LOGIC =================
+    function renderPage1() {
+      document.getElementById('invPrefix').value = state.docConfig.prefix || 'INV-202608-';
+      document.getElementById('invRunningNo').value = state.docConfig.runningNo || 1;
+      
+      document.getElementById('sellerName').value = state.sellerInfo.name || '';
+      document.getElementById('sellerTaxId').value = state.sellerInfo.taxId || '';
+      document.getElementById('sellerPhone').value = state.sellerInfo.phone || '';
+      document.getElementById('sellerAddress').value = state.sellerInfo.address || '';
+
+      // Logo Render
+      if (state.logoImg) {
+        document.getElementById('logoPreview').src = state.logoImg;
+        document.getElementById('logoPreview').classList.remove('hidden');
+        document.getElementById('noLogoText').classList.add('hidden');
+      } else {
+        document.getElementById('logoPreview').classList.add('hidden');
+        document.getElementById('noLogoText').classList.remove('hidden');
+      }
+
+      // Signature Render
+      if (state.signatureImg) {
+        document.getElementById('signaturePreview').src = state.signatureImg;
+        document.getElementById('signaturePreview').classList.remove('hidden');
+        document.getElementById('noSignatureText').classList.add('hidden');
+      } else {
+        document.getElementById('signaturePreview').classList.add('hidden');
+        document.getElementById('noSignatureText').classList.remove('hidden');
+      }
+
+      renderPaymentChannelsTable();
+      renderProductsTable();
+      onPaymentTypeChange();
+    }
+
+    function saveDocConfig() {
+      state.docConfig.prefix = document.getElementById('invPrefix').value;
+      state.docConfig.runningNo = parseInt(document.getElementById('invRunningNo').value) || 1;
+      localStorage.setItem('tax_doc_config', JSON.stringify(state.docConfig));
+      updateInvoiceNumberPreview();
+    }
+
+    function updateInvoiceNumberPreview() {
+      const code = state.docConfig.prefix + String(state.docConfig.runningNo).padStart(4, '0');
+      document.getElementById('invPreviewCode').innerText = code;
+    }
+
+    function saveSellerInfo() {
+      state.sellerInfo = {
+        name: document.getElementById('sellerName').value,
+        taxId: document.getElementById('sellerTaxId').value,
+        phone: document.getElementById('sellerPhone').value,
+        address: document.getElementById('sellerAddress').value
+      };
+      localStorage.setItem('tax_seller_info', JSON.stringify(state.sellerInfo));
+    }
+
+    // 1.1 Dynamic Payment Channels Form Handling
+    function onPaymentTypeChange() {
+      const type = document.getElementById('newPaymentType').value;
+      const target = document.getElementById('dynamicPayInputs');
+      target.innerHTML = '';
+
+      if (type === 'bank') {
+        target.innerHTML = `
+          <input type="text" id="payBankName" placeholder="ชื่อธนาคาร (เช่น กสิกรไทย)" class="p-2 border rounded text-xs bg-white">
+          <input type="text" id="payAccNo" placeholder="เลขที่บัญชี (เช่น 123-4-56789-0)" class="p-2 border rounded text-xs bg-white">
+          <input type="text" id="payAccName" placeholder="ชื่อบัญชี" class="p-2 border rounded text-xs bg-white sm:col-span-2">
+        `;
+      } else if (type === 'promptpay') {
+        target.innerHTML = `
+          <input type="text" id="payPromptPayId" placeholder="เบอร์โทร / เลขบัตรประชาชน PromptPay" class="p-2 border rounded text-xs bg-white">
+          <input type="text" id="payAccName" placeholder="ชื่อบัญชีผู้รับเงิน" class="p-2 border rounded text-xs bg-white">
+        `;
+      } else if (type === 'cash') {
+        target.innerHTML = `
+          <input type="text" id="payCashDetail" placeholder="รายละเอียดเพิ่มเติม (เช่น ชำระหน้าร้าน / เก็บเงินปลายทาง)" value="ชำระเงินสด" class="p-2 border rounded text-xs bg-white sm:col-span-2">
+        `;
+      } else if (type === 'cheque') {
+        target.innerHTML = `
+          <input type="text" id="payBankName" placeholder="ธนาคารสั่งจ่าย" class="p-2 border rounded text-xs bg-white">
+          <input type="text" id="payChequeNo" placeholder="เลขที่เช็ค" class="p-2 border rounded text-xs bg-white">
+        `;
+      } else {
+        target.innerHTML = `
+          <input type="text" id="payOtherDetail" placeholder="ระบุรายละเอียดช่องทางชำระเงิน" class="p-2 border rounded text-xs bg-white sm:col-span-2">
+        `;
+      }
+    }
+
+    function addPaymentChannel() {
+      const type = document.getElementById('newPaymentType').value;
+      let newChannel = { id: Date.now(), type, isDefault: state.paymentChannels.length === 0 };
+
+      if (type === 'bank') {
+        const bankName = document.getElementById('payBankName')?.value.trim();
+        const accNo = document.getElementById('payAccNo')?.value.trim();
+        const accName = document.getElementById('payAccName')?.value.trim();
+        if (!bankName || !accNo) return alert('กรุณากรอกข้อมูลธนาคารและเลขบัญชีให้ครบถ้วน');
+        newChannel = { ...newChannel, bankName, accNo, accName };
+      } else if (type === 'promptpay') {
+        const promptPayId = document.getElementById('payPromptPayId')?.value.trim();
+        const accName = document.getElementById('payAccName')?.value.trim();
+        if (!promptPayId) return alert('กรุณากรอกเบอร์โทรหรือเลข ID พร้อมเพย์');
+        newChannel = { ...newChannel, promptPayId, accName };
+      } else if (type === 'cash') {
+        const detail = document.getElementById('payCashDetail')?.value.trim() || 'ชำระเงินสด';
+        newChannel = { ...newChannel, detail };
+      } else if (type === 'cheque') {
+        const bankName = document.getElementById('payBankName')?.value.trim();
+        const chequeNo = document.getElementById('payChequeNo')?.value.trim();
+        newChannel = { ...newChannel, bankName, chequeNo };
+      } else {
+        const detail = document.getElementById('payOtherDetail')?.value.trim();
+        if (!detail) return alert('กรุณากรอกรายละเอียดช่องทางชำระเงิน');
+        newChannel = { ...newChannel, detail };
+      }
+
+      state.paymentChannels.push(newChannel);
+      localStorage.setItem('tax_payment_channels', JSON.stringify(state.paymentChannels));
+      renderPaymentChannelsTable();
+      renderPage3PaymentChannels();
+      onPaymentTypeChange();
+    }
+
+    function renderPaymentChannelsTable() {
+      const tbody = document.getElementById('paymentChannelsTable');
+      if (!state.paymentChannels || state.paymentChannels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-gray-400">ยังไม่มีรายการช่องทางชำระเงิน</td></tr>';
+        return;
+      }
+
+      const typeTitles = { bank: '🏦 บัญชีธนาคาร', promptpay: '📱 พร้อมเพย์', cash: '💵 เงินสด', cheque: '📜 เช็คสั่งจ่าย', other: '💳 อื่นๆ' };
+
+      tbody.innerHTML = state.paymentChannels.map((p) => {
+        let detailText = '';
+        if (p.type === 'bank') detailText = `${p.bankName} เลขบัญชี: ${p.accNo} (${p.accName || '-'})`;
+        else if (p.type === 'promptpay') detailText = `พร้อมเพย์: ${p.promptPayId} (${p.accName || '-'})`;
+        else if (p.type === 'cash') detailText = p.detail || 'ชำระเงินสด';
+        else if (p.type === 'cheque') detailText = `เช็คธนาคาร: ${p.bankName || '-'} เลขที่: ${p.chequeNo || '-'}`;
+        else detailText = p.detail || '-';
+
+        return `
+          <tr class="border-b">
+            <td class="p-2 font-bold">${typeTitles[p.type] || 'อื่นๆ'}</td>
+            <td class="p-2">${detailText}</td>
+            <td class="p-2 text-center">
+              <input type="radio" name="defaultPayRadio" ${p.isDefault ? 'checked' : ''} onchange="setDefaultPaymentChannel(${p.id})">
+            </td>
+            <td class="p-2 text-center">
+              <button onclick="removePaymentChannel(${p.id})" class="text-red-600 hover:underline">ลบ</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function setDefaultPaymentChannel(id) {
+      state.paymentChannels.forEach(p => p.isDefault = (p.id === id));
+      localStorage.setItem('tax_payment_channels', JSON.stringify(state.paymentChannels));
+      renderPaymentChannelsTable();
+      renderPage3PaymentChannels();
+    }
+
+    function removePaymentChannel(id) {
+      state.paymentChannels = state.paymentChannels.filter(p => p.id !== id);
+      if (state.paymentChannels.length > 0 && !state.paymentChannels.some(p => p.isDefault)) {
+        state.paymentChannels[0].isDefault = true;
+      }
+      localStorage.setItem('tax_payment_channels', JSON.stringify(state.paymentChannels));
+      renderPaymentChannelsTable();
+      renderPage3PaymentChannels();
+    }
+
+    // Image Upload & Crop Process
+    function initCropImage(e, type) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        document.getElementById('cropperImage').src = event.target.result;
+        document.getElementById('cropperModal').classList.remove('hidden');
+        state.currentCropType = type;
+
+        if (state.cropper) state.cropper.destroy();
+        const image = document.getElementById('cropperImage');
+        state.cropper = new Cropper(image, {
+          aspectRatio: type === 'logo' ? 1 : NaN,
+          viewMode: 1
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function applyCropImage() {
+      if (!state.cropper) return;
+      const canvas = state.cropper.getCroppedCanvas();
+      const croppedDataUrl = canvas.toDataURL('image/png');
+
+      if (state.currentCropType === 'logo') {
+        state.logoImg = croppedDataUrl;
+        localStorage.setItem('tax_logo_img', croppedDataUrl);
+      } else if (state.currentCropType === 'signature') {
+        state.signatureImg = croppedDataUrl;
+        localStorage.setItem('tax_signature_img', croppedDataUrl);
+      }
+
+      closeCropperModal();
+      renderPage1();
+    }
+
+    function closeCropperModal() {
+      document.getElementById('cropperModal').classList.add('hidden');
+      if (state.cropper) {
+        state.cropper.destroy();
+        state.cropper = null;
+      }
+      document.getElementById('logoFileInput').value = '';
+      document.getElementById('signatureFileInput').value = '';
+    }
+
+    function clearLogo() {
+      state.logoImg = null;
+      localStorage.removeItem('tax_logo_img');
+      renderPage1();
+    }
+
+    function clearSignature() {
+      state.signatureImg = null;
+      localStorage.removeItem('tax_signature_img');
+      renderPage1();
+    }
+
+    // Excel Import
+    function handleExcelImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet);
+
+        state.products = json.map((row, idx) => ({
+          sku: row['SKU'] || row['รหัสสินค้า'] || 'SKU-' + (idx + 1),
+          category: row['หมวดหมู่'] || row['หมวด'] || 'ทั่วไป',
+          name: row['ชื่อสินค้า'] || row['รายการ'] || 'สินค้า ' + (idx + 1),
+          status: row['สถานะ'] || 'active',
+          wholesalePrice: parseFloat(row['ขายส่ง']) || 0,
+          retailPrice: parseFloat(row['ขายปลีก']) || 0,
+          facebookPrice: parseFloat(row['FB']) || parseFloat(row['Facebook']) || 0,
+          shopeePrice: parseFloat(row['Shopee']) || 0,
+          tiktokPrice: parseFloat(row['TikTok']) || 0,
+          lazadaPrice: parseFloat(row['Lazada']) || 0,
+          otherPrice: parseFloat(row['Others']) || 0
+        }));
+
+        state.productsLastUpdated = new Date().toLocaleString('th-TH');
+        localStorage.setItem('tax_products', JSON.stringify(state.products));
+        localStorage.setItem('tax_products_updated', state.productsLastUpdated);
+
+        renderProductsTable();
+        alert(`นำเข้าข้อมูลสินค้าเรียบร้อยแล้ว จำนวน ${state.products.length} รายการ`);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderProductsTable() {
+      document.getElementById('p1TotalCount').innerText = `${state.products.length} รายการ`;
+      document.getElementById('p1LastUpdated').innerText = state.productsLastUpdated || 'ยังไม่มีการนำเข้าข้อมูล';
+
+      const tbody = document.getElementById('productListTable');
+      if (state.products.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="p-4 text-center text-gray-400">ยังไม่มีรายการสินค้า</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = state.products.map(p => `
+        <tr class="border-b hover:bg-gray-50">
+          <td class="p-2 font-mono font-bold">${p.sku}</td>
+          <td class="p-2">${p.category}</td>
+          <td class="p-2 font-medium">${p.name}</td>
+          <td class="p-2 font-medium">${p.status}</td>
+          <td class="p-2 text-right">${p.wholesalePrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.retailPrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.facebookPrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.shopeePrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.tiktokPrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.lazadaPrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${p.otherPrice.toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function clearProducts() {
+      if (confirm('คุณต้องการล้างรายการสินค้า Master Data ทั้งหมดหรือไม่?')) {
+        state.products = [];
+        state.productsLastUpdated = null;
+        localStorage.removeItem('tax_products');
+        localStorage.removeItem('tax_products_updated');
+        renderProductsTable();
+      }
+    }
+
+    // ================= PAGE 2 LOGIC =================
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historyTableBody');
+      const searchText = document.getElementById('searchHistoryInput').value.toLowerCase().trim();
+
+      let filtered = state.orderHistory;
+      if (searchText) {
+        filtered = filtered.filter(o => 
+          (o.invNo && o.invNo.toLowerCase().includes(searchText)) ||
+          (o.buyerName && o.buyerName.toLowerCase().includes(searchText)) ||
+          (o.buyerPhone && o.buyerPhone.toLowerCase().includes(searchText))
+        );
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-400">ยังไม่มีประวัติการสั่งซื้อ</td></tr>';
+        return;
+      }
+
+      const channelNames = {
+        retail: 'ขายปลีก', wholesale: 'ขายส่ง', facebook: 'Facebook',
+        shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada', custom: 'Custom'
+      };
+
+      tbody.innerHTML = filtered.map((o) => `
+        <tr class="border-b hover:bg-gray-50">
+          <td class="p-3 text-center">
+            <input type="checkbox" class="history-checkbox w-4 h-4 text-blue-600 rounded cursor-pointer" value="${o.invNo}" onchange="updateSelectedCount()">
+          </td>
+          <td class="p-3 font-mono font-bold text-blue-700">${o.invNo}</td>
+          <td class="p-3 text-center"><span class="px-2 py-0.5 bg-gray-100 rounded text-[11px]">${channelNames[o.salesChannel] || 'ขายปลีก'}</span></td>
+          <td class="p-3">${o.date || '-'}</td>
+          <td class="p-3">
+            <div class="font-bold">${o.buyerName || '-'}</div>
+            <div class="text-[10px] text-gray-500">${o.buyerPhone || ''}</div>
+          </td>
+          <td class="p-3 text-right font-bold text-green-700">${(o.netPayment || 0).toFixed(2)} ฿</td>
+          <td class="p-3 text-center">
+            ${o.isCancelled ? 
+              '<span class="px-2 py-0.5 bg-red-100 text-red-800 rounded text-[10px] font-bold">ยกเลิก (Cancelled)</span>' : 
+              '<span class="px-2 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-bold">สมบูรณ์</span>'
+            }
+          </td>
+          <td class="p-3 text-center space-x-1">
+            <button onclick="viewOrEditOrder('${o.invNo}', false)" class="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded text-[11px] font-bold hover:bg-blue-100">ดู/แก้ไข</button>
+            <button onclick="promptCopyOrder('${o.invNo}')" class="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px] font-bold hover:bg-amber-100">คัดลอก</button>
+            ${!o.isCancelled ? `<button onclick="cancelOrder('${o.invNo}')" class="px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded text-[11px] font-bold hover:bg-red-100">ใบลดหนี้</button>` : ''}
+          </td>
+        </tr>
+      `).join('');
+
+      updateSelectedCount();
+    }
+
+    function toggleSelectAll(master) {
+      document.querySelectorAll('.history-checkbox').forEach(cb => cb.checked = master.checked);
+      updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+      const selected = document.querySelectorAll('.history-checkbox:checked');
+      const count = selected.length;
+      document.getElementById('selectedCountText').innerText = count;
+      if (count > 0) {
+        document.getElementById('batchDeleteBtn').classList.remove('hidden');
+      } else {
+        document.getElementById('batchDeleteBtn').classList.add('hidden');
+      }
+    }
+
+    function confirmBatchDelete() {
+      const selected = Array.from(document.querySelectorAll('.history-checkbox:checked')).map(cb => cb.value);
+      if (selected.length === 0) return;
+
+      if (confirm(`คุณต้องการลบรายการที่เลือกทั้งหมด ${selected.length} รายการ ออกจากระบบใช่หรือไม่?`)) {
+        state.orderHistory = state.orderHistory.filter(o => !selected.includes(o.invNo));
+        localStorage.setItem('tax_order_history', JSON.stringify(state.orderHistory));
+        renderHistoryTable();
+      }
+    }
+
+    // 2.1 [Bug Fix] ดู/แก้ไข รายการเดิม (ใช้ Invoice No. เดิมเสมอ ไม่รันเลขใหม่)
+    function viewOrEditOrder(invNo, isCopyMode = false) {
+      const orderIndex = state.orderHistory.findIndex(o => o.invNo === invNo);
+      if (orderIndex === -1) return alert('ไม่พบข้อมูลเอกสาร');
+
+      const order = state.orderHistory[orderIndex];
+
+      if (isCopyMode) {
+        // โหมดคัดลอก -> รัน Running No. ใหม่
+        state.editingIndex = -1;
+        const newInvNo = state.docConfig.prefix + String(state.docConfig.runningNo).padStart(4, '0');
+        document.getElementById('page3CurrentInvNo').innerText = newInvNo;
+        document.getElementById('editingBanner').classList.add('hidden');
+      } else {
+        // โหมดแก้ไขเดิม -> ใช้ Invoice No. เดิมเสมอ ไม่อัปเดต Running No.
+        state.editingIndex = orderIndex;
+        document.getElementById('page3CurrentInvNo').innerText = order.invNo;
+        document.getElementById('editingInvNo').innerText = order.invNo;
+        document.getElementById('editingBanner').classList.remove('hidden');
+      }
+
+      // Populate Data to Form Page 3
+      document.getElementById('buyerName').value = order.buyerName || '';
+      document.getElementById('buyerTaxId').value = order.buyerTaxId || '';
+      document.getElementById('buyerPhone').value = order.buyerPhone || '';
+      document.getElementById('buyerAddress').value = order.buyerAddress || '';
+      document.getElementById('salesChannel').value = order.salesChannel || 'retail';
+      
+      document.getElementById('enableCreditTerm').checked = !!order.enableCreditTerm;
+      document.getElementById('creditDays').value = order.creditDays || 30;
+      document.getElementById('dueDateInput').value = order.dueDate || '';
+      toggleCreditTerm();
+
+      document.getElementById('vatType').value = order.vatType || 'exclude';
+      document.getElementById('shippingFeeInput').value = order.shippingFee || 0;
+      document.getElementById('billDiscount').value = order.billDiscount || 0;
+      document.getElementById('billDiscountType').value = order.billDiscountType || 'THB';
+      document.getElementById('platformDiscountInput').value = order.platformDiscount || 0;
+      document.getElementById('documentNote').value = order.documentNote || '';
+      document.getElementById('useSignatureCheckbox').checked = order.useSignature !== false;
+
+      state.currentInvoiceItems = JSON.parse(JSON.stringify(order.items || []));
+      renderInvoiceItemsTable();
+
+      switchPage(3);
+    }
+
+    function createNewInvoice() {
+      state.editingIndex = -1;
+      const newInvNo = state.docConfig.prefix + String(state.docConfig.runningNo).padStart(4, '0');
+      document.getElementById('page3CurrentInvNo').innerText = newInvNo;
+      document.getElementById('editingBanner').classList.add('hidden');
+      resetFormToNew();
+      switchPage(3);
+    }
+
+    function promptCopyOrder(invNo) {
+      state.copySourceOrder = invNo;
+      document.getElementById('copyOptionsModal').classList.remove('hidden');
+    }
+
+    function closeCopyModal() {
+      document.getElementById('copyOptionsModal').classList.add('hidden');
+      state.copySourceOrder = null;
+    }
+
+    function executeCopyOrder(keepItems) {
+      const invNo = state.copySourceOrder;
+      closeCopyModal();
+      viewOrEditOrder(invNo, true);
+      if (!keepItems) {
+        state.currentInvoiceItems = [];
+        renderInvoiceItemsTable();
+      }
+    }
+
+    function exportHistoryExcel() {
+      if (state.orderHistory.length === 0) return alert('ไม่มีข้อมูลประวัติให้ Export');
+      const ws = XLSX.utils.json_to_sheet(state.orderHistory);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "OrderHistory");
+      XLSX.writeFile(wb, "Tax_Invoice_History.xlsx");
+    }
+
+    // ================= PAGE 3 LOGIC =================
+    // 3.1 Render Checkboxes for Payment Channels selection in Page 3
+    // 3.1 Render Checkboxes สำหรับเลือกช่องทางชำระเงินในหน้า 3 (เลือกได้หลายบัญชี)
+  function renderPage3PaymentChannels() {
+  const target = document.getElementById('page3PaymentChannelsList');
+  if (!state.paymentChannels || state.paymentChannels.length === 0) {
+    target.innerHTML = '<span class="text-gray-400 col-span-full">ยังไม่ได้ตั้งค่าช่องทางชำระเงินในหน้า 1</span>';
+    return;
+  }
+
+  const typeTitles = { 
+    bank: '🏦 บัญชีธนาคาร', 
+    promptpay: '📱 พร้อมเพย์', 
+    cash: '💵 เงินสด', 
+    cheque: '📜 เช็คสั่งจ่าย', 
+    other: '💳 อื่นๆ' 
+  };
+
+  target.innerHTML = state.paymentChannels.map((p) => {
+    let labelText = '';
+    if (p.type === 'bank') labelText = `${p.bankName} เลขบัญชี: ${p.accNo} (${p.accName || '-'})`;
+    else if (p.type === 'promptpay') labelText = `พร้อมเพย์: ${p.promptPayId} (${p.accName || '-'})`;
+    else if (p.type === 'cash') labelText = p.detail || 'ชำระเงินสด';
+    else if (p.type === 'cheque') labelText = `เช็คธนาคาร: ${p.bankName || '-'} เลขที่: ${p.chequeNo || '-'}`;
+    else labelText = p.detail || '-';
+
+    const fullDetailText = `${typeTitles[p.type] || 'อื่นๆ'}: ${labelText}`;
+
+    return `
+      <label class="flex items-start gap-2 bg-white p-2.5 rounded border border-gray-200 hover:bg-blue-50/60 cursor-pointer transition">
+        <input type="checkbox" class="pay-channel-checkbox w-4 h-4 mt-0.5 text-blue-600 rounded cursor-pointer" value="${fullDetailText}" ${p.isDefault ? 'checked' : ''}>
+        <span class="text-xs text-gray-800 leading-tight select-none">${fullDetailText}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+    // 3.1 [CR] Append Selected Payment Channels to Document Note (ไม่ overwrite ข้อความเดิม)
+    // ดึงช่องทางชำระเงินที่เลือก (มากกว่า 1 รายการ) นำไปใส่ในหมายเหตุท้ายบิล
+  // ดึงช่องทางชำระเงินที่เลือก (มากกว่า 1 รายการ) นำไปใส่ในหมายเหตุท้ายบิล
+function appendSelectedPaymentChannelsToNote() {
+  const checkedBoxes = document.querySelectorAll('.pay-channel-checkbox:checked');
+  if (checkedBoxes.length === 0) {
+    return alert('กรุณาติ๊กเลือกช่องทางชำระเงินอย่างน้อย 1 รายการ');
+  }
+
+  // รวมรายการบัญชีที่เลือกทั้งหมดเข้ามาเป็น Array
+  const selectedTexts = Array.from(checkedBoxes).map(cb => `• ${cb.value}`);
+  const appendStr = "ช่องทางการชำระเงิน:\n" + selectedTexts.join("\n");
+
+  const noteElem = document.getElementById('documentNote');
+  const currentNote = noteElem.value.trim();
+
+  if (currentNote) {
+    // ป้องกันการทับข้อความเดิม ถ้ามีข้อความอยู่แล้วให้ต่อเว้นบรรทัดใหม่
+    noteElem.value = currentNote + "\n\n" + appendStr;
+  } else {
+    noteElem.value = appendStr;
+  }
+
+  alert(`เพิ่มช่องทางชำระเงินจำนวน ${checkedBoxes.length} รายการ ลงในหมายเหตุเรียบร้อยแล้ว`);
+}
+
+    function toggleCreditTerm() {
+      const enabled = document.getElementById('enableCreditTerm').checked;
+      document.getElementById('creditTermInputs').classList.toggle('hidden', !enabled);
+      if (enabled) calculateDueDate();
+    }
+
+    function calculateDueDate() {
+      const days = parseInt(document.getElementById('creditDays').value) || 30;
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      document.getElementById('dueDateInput').value = d.toISOString().split('T')[0];
+    }
+
+    function onSalesChannelChange() {
+      if (state.selectedProductForInput) {
+        updateUnitPriceByChannel(state.selectedProductForInput);
+      }
+    }
+
+    function filterProducts() {
+      const term = document.getElementById('searchProductInput').value.toLowerCase().trim();
+      const res = document.getElementById('searchResults');
+      if (!term) {
+        res.classList.add('hidden');
+        return;
+      }
+
+      const matches = state.products.filter(p => 
+        p.name.toLowerCase().includes(term) || 
+        p.sku.toLowerCase().includes(term) ||
+        p.category.toLowerCase().includes(term)
+      );
+
+      if (matches.length === 0) {
+        res.innerHTML = '<div class="p-3 text-xs text-gray-400 text-center">ไม่พบรายการสินค้า</div>';
+      } else {
+        res.innerHTML = matches.map(p => `
+          <div onclick="selectProductToInput('${p.sku}')" class="p-2.5 hover:bg-blue-50 cursor-pointer border-b text-xs flex justify-between items-center">
+            <div>
+              <div class="font-bold text-gray-800">${p.name}</div>
+              <div class="text-[10px] text-gray-500 font-mono">SKU: ${p.sku} | หมวด: ${p.category}</div>
+            </div>
+            <div class="font-bold text-blue-600">${p.retailPrice.toFixed(2)} ฿</div>
+          </div>
+        `).join('');
+      }
+      res.classList.remove('hidden');
+    }
+
+    function showSearchResults() {
+      if (document.getElementById('searchProductInput').value.trim()) {
+        document.getElementById('searchResults').classList.remove('hidden');
+      }
+    }
+
+    function selectProductToInput(sku) {
+      const prod = state.products.find(p => p.sku === sku);
+      if (!prod) return;
+
+      state.selectedProductForInput = prod;
+      document.getElementById('searchProductInput').value = `${prod.name} (${prod.sku})`;
+      document.getElementById('searchResults').classList.add('hidden');
+      
+      updateUnitPriceByChannel(prod);
+    }
+
+    function updateUnitPriceByChannel(prod) {
+      const channel = document.getElementById('salesChannel').value;
+      let price = prod.retailPrice;
+
+      if (channel === 'wholesale') price = prod.wholesalePrice;
+      else if (channel === 'facebook') price = prod.facebookPrice || prod.retailPrice;
+      else if (channel === 'shopee') price = prod.shopeePrice || prod.retailPrice;
+      else if (channel === 'tiktok') price = prod.tiktokPrice || prod.retailPrice;
+      else if (channel === 'lazada') price = prod.lazadaPrice || prod.retailPrice;
+
+      document.getElementById('unitPriceInput').value = price;
+      onQtyOrPriceChange('unit');
+    }
+
+    function adjustQty(amount) {
+      const qtyInput = document.getElementById('itemQty');
+      let val = parseInt(qtyInput.value) || 1;
+      val += amount;
+      if (val < 1) val = 1;
+      qtyInput.value = val;
+      onQtyOrPriceChange('qty');
+    }
+
+    // 2-Way Auto Calculation (Quantity / Unit Price / Total SKU Price)
+    function onQtyOrPriceChange(changedSource) {
+      const qty = parseFloat(document.getElementById('itemQty').value) || 1;
+      let unitPrice = parseFloat(document.getElementById('unitPriceInput').value) || 0;
+      let totalSku = parseFloat(document.getElementById('totalSkuPriceInput').value) || 0;
+      const discountVal = parseFloat(document.getElementById('unitDiscountInput').value) || 0;
+      const discountType = document.getElementById('unitDiscountType').value;
+
+      let netUnit = unitPrice;
+      if (discountType === 'PERCENT') netUnit = unitPrice * (1 - discountVal / 100);
+      else netUnit = unitPrice - discountVal;
+
+      if (changedSource === 'total') {
+        unitPrice = qty > 0 ? (totalSku / qty) : 0;
+        document.getElementById('unitPriceInput').value = unitPrice.toFixed(2);
+      } else {
+        totalSku = qty * netUnit;
+        document.getElementById('totalSkuPriceInput').value = totalSku.toFixed(2);
+      }
+    }
+
+    function addItemToInvoice() {
+      const nameInput = document.getElementById('searchProductInput').value.trim();
+      const qty = parseFloat(document.getElementById('itemQty').value) || 1;
+      const unitPrice = parseFloat(document.getElementById('unitPriceInput').value) || 0;
+      const discountVal = parseFloat(document.getElementById('unitDiscountInput').value) || 0;
+      const discountType = document.getElementById('unitDiscountType').value;
+
+      if (!nameInput) return alert('กรุณาเลือกหรือระบุชื่อสินค้า');
+
+      let netUnit = unitPrice;
+      if (discountType === 'PERCENT') netUnit = unitPrice * (1 - discountVal / 100);
+      else netUnit = unitPrice - discountVal;
+
+      const total = qty * netUnit;
+
+      state.currentInvoiceItems.push({
+        name: nameInput,
+        qty,
+        unitPrice,
+        discountVal,
+        discountType,
+        total
+      });
+
+      // Clear Inputs
+      document.getElementById('searchProductInput').value = '';
+      document.getElementById('itemQty').value = 1;
+      document.getElementById('unitPriceInput').value = 0;
+      document.getElementById('totalSkuPriceInput').value = 0;
+      document.getElementById('unitDiscountInput').value = 0;
+      state.selectedProductForInput = null;
+
+      renderInvoiceItemsTable();
+    }
+
+    function removeInvoiceItem(idx) {
+      state.currentInvoiceItems.splice(idx, 1);
+      renderInvoiceItemsTable();
+    }
+
+    function renderInvoiceItemsTable() {
+      const tbody = document.getElementById('invoiceItemsTable');
+      if (state.currentInvoiceItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400">ยังไม่ได้เลือกสินค้า</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = state.currentInvoiceItems.map((item, idx) => `
+        <tr class="border-b">
+          <td class="p-2 font-medium">${item.name}</td>
+          <td class="p-2 text-center font-bold">${item.qty}</td>
+          <td class="p-2 text-right">${item.unitPrice.toFixed(2)}</td>
+          <td class="p-2 text-right">${item.discountVal} ${item.discountType === 'PERCENT' ? '%' : '฿'}</td>
+          <td class="p-2 text-right font-bold text-blue-700">${item.total.toFixed(2)}</td>
+          <td class="p-2 text-center">
+            <button onclick="removeInvoiceItem(${idx})" class="text-red-600 hover:underline">ลบ</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function resetFormToNew() {
+      state.editingIndex = -1;
+      state.currentInvoiceItems = [];
+      document.getElementById('buyerName').value = '';
+      document.getElementById('buyerTaxId').value = '';
+      document.getElementById('buyerPhone').value = '';
+      document.getElementById('buyerAddress').value = '';
+      document.getElementById('salesChannel').value = 'retail';
+      document.getElementById('enableCreditTerm').checked = false;
+      toggleCreditTerm();
+      document.getElementById('vatType').value = 'exclude';
+      document.getElementById('shippingFeeInput').value = 0;
+      document.getElementById('billDiscount').value = 0;
+      document.getElementById('platformDiscountInput').value = 0;
+      document.getElementById('documentNote').value = '';
+      
+      const newInvNo = state.docConfig.prefix + String(state.docConfig.runningNo).padStart(4, '0');
+      document.getElementById('page3CurrentInvNo').innerText = newInvNo;
+      document.getElementById('editingBanner').classList.add('hidden');
+      
+      renderInvoiceItemsTable();
+    }
+
+    // Save & Calculate Order Math
+    function saveAndGenerateInvoice() {
+      if (state.currentInvoiceItems.length === 0) return alert('กรุณาเลือกรายการสินค้าอย่างน้อย 1 รายการ');
+
+      let currentInvNo = '';
+      if (state.editingIndex >= 0) {
+        // แก้ไขรายการเดิม -> คงเลข Invoice No. เดิมเสมอ
+        currentInvNo = state.orderHistory[state.editingIndex].invNo;
+      } else {
+        // สร้างใหม่ -> ใช้ Running No. ล่าสุด
+        currentInvNo = state.docConfig.prefix + String(state.docConfig.runningNo).padStart(4, '0');
+      }
+
+      const buyerName = document.getElementById('buyerName').value;
+      const buyerTaxId = document.getElementById('buyerTaxId').value;
+      const buyerPhone = document.getElementById('buyerPhone').value;
+      const buyerAddress = document.getElementById('buyerAddress').value;
+      const salesChannel = document.getElementById('salesChannel').value;
+      const enableCreditTerm = document.getElementById('enableCreditTerm').checked;
+      const creditDays = parseInt(document.getElementById('creditDays').value) || 0;
+      const dueDate = document.getElementById('dueDateInput').value;
+      const vatType = document.getElementById('vatType').value;
+      
+      const shippingFee = parseFloat(document.getElementById('shippingFeeInput').value) || 0;
+      const billDiscount = parseFloat(document.getElementById('billDiscount').value) || 0;
+      const billDiscountType = document.getElementById('billDiscountType').value;
+      const platformDiscount = parseFloat(document.getElementById('platformDiscountInput').value) || 0;
+      const documentNote = document.getElementById('documentNote').value;
+      const useSignature = document.getElementById('useSignatureCheckbox').checked;
+
+      // Mathematical Calculation Logic
+      let subtotal = state.currentInvoiceItems.reduce((sum, i) => sum + i.total, 0);
+      
+      let shopDiscountAmount = billDiscount;
+      if (billDiscountType === 'PERCENT') shopDiscountAmount = subtotal * (billDiscount / 100);
+
+      const afterShopDiscount = (subtotal + shippingFee) - shopDiscountAmount;
+
+      let vat = 0;
+      let exVat = afterShopDiscount;
+      let grandTotal = afterShopDiscount;
+
+      if (vatType === 'exclude') {
+        vat = afterShopDiscount * 0.07;
+        grandTotal = afterShopDiscount + vat;
+        exVat = afterShopDiscount;
+      } else if (vatType === 'include') {
+        exVat = afterShopDiscount / 1.07;
+        vat = afterShopDiscount - exVat;
+        grandTotal = afterShopDiscount;
+      } else { // zero vat
+        vat = 0;
+        exVat = afterShopDiscount;
+        grandTotal = afterShopDiscount;
+      }
+
+      const netPayment = grandTotal - platformDiscount;
+
+      const orderData = {
+        invNo: currentInvNo,
+        date: new Date().toLocaleDateString('th-TH'),
+        buyerName, buyerTaxId, buyerPhone, buyerAddress,
+        salesChannel, enableCreditTerm, creditDays, dueDate,
+        vatType, shippingFee, billDiscount, billDiscountType,
+        platformDiscount, documentNote, useSignature,
+        items: state.currentInvoiceItems,
+        subtotal, shopDiscountAmount, afterShopDiscount,
+        vat, exVat, grandTotal, netPayment,
+        isCancelled: false
+      };
+
+      if (state.editingIndex >= 0) {
+        // Update Overwrite Existing Order (2.1 Bug Fixed)
+        state.orderHistory[state.editingIndex] = orderData;
+      } else {
+        // Push New Order & Increment invRunningNo ONLY for New Order
+        state.orderHistory.unshift(orderData);
+        state.docConfig.runningNo += 1;
+        localStorage.setItem('tax_doc_config', JSON.stringify(state.docConfig));
+        updateInvoiceNumberPreview();
+      }
+
+      localStorage.setItem('tax_order_history', JSON.stringify(state.orderHistory));
+
+      document.getElementById('goToPdfBtn').classList.remove('hidden');
+      switchPage(4);
+    }
+
+    // ================= PAGE 4 A4 VIEW & EXPORT LOGIC =================
+    function renderA4Document() {
+      let currentInvNo = document.getElementById('page3CurrentInvNo').innerText;
+      let order = state.orderHistory.find(o => o.invNo === currentInvNo);
+
+      if (!order && state.orderHistory.length > 0) {
+        order = state.orderHistory[0];
+      }
+
+      if (!order) return;
+
+      // Render Header
+      document.getElementById('invSellerName').innerText = state.sellerInfo.name || 'บริษัท ตัวอย่าง จำกัด';
+      document.getElementById('invSellerAddress').innerText = state.sellerInfo.address || '-';
+      document.getElementById('invSellerTaxId').innerText = state.sellerInfo.taxId || '-';
+      document.getElementById('invSellerPhone').innerText = state.sellerInfo.phone || '-';
+
+      if (state.logoImg) {
+        document.getElementById('invLogoImg').src = state.logoImg;
+        document.getElementById('invLogoContainer').classList.remove('hidden');
+      } else {
+        document.getElementById('invLogoContainer').classList.add('hidden');
+      }
+
+      if (state.signatureImg && order.useSignature !== false) {
+        document.getElementById('invSignatureImg').src = state.signatureImg;
+        document.getElementById('invSignatureImg').classList.remove('hidden');
+      } else {
+        document.getElementById('invSignatureImg').classList.add('hidden');
+      }
+
+      document.getElementById('invNo').innerText = order.invNo;
+      document.getElementById('invDate').innerText = order.date || '';
+      
+      const channelNames = { retail: 'ขายปลีก', wholesale: 'ขายส่ง', facebook: 'Facebook', shopee: 'Shopee', tiktok: 'TikTok', lazada: 'Lazada', custom: 'Custom' };
+      document.getElementById('invChannelDisplay').innerText = channelNames[order.salesChannel] || 'ขายปลีก';
+
+      // Customer
+      document.getElementById('invBuyerName').innerText = order.buyerName || '-';
+      document.getElementById('invBuyerAddress').innerText = order.buyerAddress || '-';
+      document.getElementById('invBuyerTaxId').innerText = order.buyerTaxId || '-';
+      document.getElementById('invBuyerPhone').innerText = order.buyerPhone || '-';
+
+      const vatBadges = { exclude: 'Exclude VAT (+7%)', include: 'Include VAT (7%)', zero: 'Non-VAT (0%)' };
+      document.getElementById('invVatBadge').innerText = vatBadges[order.vatType] || 'Exclude VAT';
+
+      // Table Items
+      const tbody = document.getElementById('invDisplayItems');
+      tbody.innerHTML = (order.items || []).map((item, idx) => `
+        <tr class="border-b">
+          <td class="p-1.5 text-center">${idx + 1}</td>
+          <td class="p-1.5">${item.name}</td>
+          <td class="p-1.5 text-center">${item.qty}</td>
+          <td class="p-1.5 text-right">${item.unitPrice.toFixed(2)}</td>
+          <td class="p-1.5 text-right">${item.discountVal} ${item.discountType === 'PERCENT' ? '%' : '฿'}</td>
+          <td class="p-1.5 text-right font-bold">${item.total.toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      // Notes & Credit
+      if (order.enableCreditTerm) {
+        document.getElementById('invCreditDisplay').innerText = `เงื่อนไข: เครดิตเทอม ${order.creditDays} วัน (ครบกำหนด ${order.dueDate || '-'})`;
+      } else {
+        document.getElementById('invCreditDisplay').innerText = 'เงื่อนไข: ไม่มีเครดิต';
+      }
+
+      document.getElementById('invDocumentNote').innerText = order.documentNote || '-';
+      document.getElementById('thaiBahtText').innerText = `(${arabicToThaiBaht(order.netPayment || 0)})`;
+
+      // 4.2 Calculation Summary Table Render (ตัดตัวเลขลำดับ 1-9 ออกเรียบร้อย)
+      document.getElementById('invSubtotal').innerText = (order.subtotal || 0).toFixed(2) + ' บาท';
+      document.getElementById('invShippingFee').innerText = (order.shippingFee || 0).toFixed(2) + ' บาท';
+      document.getElementById('invShopDiscount').innerText = '-' + (order.shopDiscountAmount || 0).toFixed(2) + ' บาท';
+      document.getElementById('invAfterShopDiscount').innerText = (order.afterShopDiscount || 0).toFixed(2) + ' บาท';
+      document.getElementById('invVat').innerText = (order.vat || 0).toFixed(2) + ' บาท';
+      document.getElementById('invExVat').innerText = (order.exVat || 0).toFixed(2) + ' บาท';
+      document.getElementById('invGrandTotal').innerText = (order.grandTotal || 0).toFixed(2) + ' บาท';
+      document.getElementById('invPlatformDiscount').innerText = '-' + (order.platformDiscount || 0).toFixed(2) + ' บาท';
+      document.getElementById('invNetPayment').innerText = (order.netPayment || 0).toFixed(2) + ' บาท';
+
+      // Cancelled Status Watermark
+      if (order.isCancelled) {
+        document.getElementById('cancelledWatermark').classList.remove('hidden');
+      } else {
+        document.getElementById('cancelledWatermark').classList.add('hidden');
+      }
+    }
+
+    // 4.1 Export PDF A4 Single Page + Fixed Thai Font Rendering
+    async function exportPDF() {
+      const element = document.getElementById('taxInvoicePrint');
+      const invNo = document.getElementById('invNo')?.innerText || 'Invoice';
+
+      // รอให้ฟอนต์โหลดสมบูรณ์ก่อนแปลงเป็น Canvas
+      await document.fonts.ready;
+
+      // 1. แปลง Element เป็น Canvas โดยใช้ html2canvas
+      html2canvas(element, {
+        scale: 2,           // เพิ่มความคมชัด (Resolution Multiplier)
+        useCORS: true,      // รองรับการโหลดรูปภาพข้าม Domain (ถ้ามี)
+        logging: false,
+        backgroundColor: '#ffffff'
+      }).then(canvas => {
+        // 2. ดึงค่าความกว้าง-สูงของ Canvas ที่เรนเดอร์ได้
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+
+        // 3. กำหนดขนาดมาตรฐานของหน้า A4 (หน่วย: มิลลิเมตร)
+        const pdfWidth = 210;
+        const pdfHeight = 297;
+
+        // 4. คำนวณ Aspect Ratio เพื่อไม่ให้สัดส่วนเบี้ยว
+        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+        
+        const finalWidth = imgWidth * ratio;
+        const finalHeight = imgHeight * ratio;
+
+        // 5. คำนวณตำแหน่งจัดให้อยู่กึ่งกลางหน้า PDF (Center Alignment)
+        const imgX = (pdfWidth - finalWidth) / 2;
+        const imgY = (pdfHeight - finalHeight) / 2;
+
+        // 6. แปลง Canvas เป็น Data URL (PNG)
+        const imgData = canvas.toDataURL('image/png');
+
+        // 7. สร้างเอกสาร PDF (A4 Portrait, หน่วย mm)
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+
+        // 8. วาดภาพลงบน PDF ตามพิกัดและขนาดที่คำนวณไว้
+        pdf.addImage(imgData, 'PNG', imgX, imgY, finalWidth, finalHeight);
+
+        // 9. บันทึกไฟล์ PDF
+        pdf.save(`${invNo}.pdf`);
+      });
+    }
+
+    function printDocument() {
+      window.print();
+    }
+
+    // Credit Note Modal & Function
+    function cancelOrder(invNo) {
+      const order = state.orderHistory.find(o => o.invNo === invNo);
+      if (!order) return;
+
+      if (confirm(`คุณต้องการออกใบลดหนี้และยกเลิกเอกสารเลขที่ ${invNo} หรือไม่?`)) {
+        order.isCancelled = true;
+        localStorage.setItem('tax_order_history', JSON.stringify(state.orderHistory));
+
+        document.getElementById('cnSellerName').innerText = state.sellerInfo.name || '-';
+        document.getElementById('cnSellerAddress').innerText = state.sellerInfo.address || '-';
+        document.getElementById('cnSellerTaxId').innerText = state.sellerInfo.taxId || '-';
+
+        document.getElementById('cnNo').innerText = 'CN-' + order.invNo;
+        document.getElementById('cnDate').innerText = new Date().toLocaleDateString('th-TH');
+        document.getElementById('cnRefInv').innerText = order.invNo;
+
+        document.getElementById('cnBuyerName').innerText = order.buyerName || '-';
+        document.getElementById('cnBuyerAddress').innerText = order.buyerAddress || '-';
+        document.getElementById('cnBuyerTaxId').innerText = order.buyerTaxId || '-';
+
+        document.getElementById('cnOldTotal').innerText = (order.netPayment || 0).toFixed(2);
+        document.getElementById('cnDiffTotal').innerText = (order.netPayment || 0).toFixed(2);
+
+        document.getElementById('cnNetDiff').innerText = (order.exVat || 0).toFixed(2) + ' บาท';
+        document.getElementById('cnVatDiff').innerText = (order.vat || 0).toFixed(2) + ' บาท';
+        document.getElementById('cnGrandDiff').innerText = (order.netPayment || 0).toFixed(2) + ' บาท';
+        document.getElementById('cnThaiBahtText').innerText = `(${arabicToThaiBaht(order.netPayment || 0)})`;
+
+        document.getElementById('creditNoteModal').classList.remove('hidden');
+        renderHistoryTable();
+      }
+    }
+
+    function closeCreditNoteModal() {
+      document.getElementById('creditNoteModal').classList.add('hidden');
+    }
+
+    function exportCreditNotePDF() {
+      const element = document.getElementById('creditNotePrint');
+      const cnNo = document.getElementById('cnNo').innerText;
+
+      const opt = {
+        margin: 0,
+        filename: `${cnNo}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(element).save();
+    }
+
+    async function exportPNG() {
+      const element = document.getElementById('taxInvoicePrint');
+      const invNo = document.getElementById('invNo')?.innerText || 'Invoice';
+
+      // รอให้ Custom Font โหลดสมบูรณ์ก่อนเรนเดอร์ภาพ
+      await document.fonts.ready;
+
+      html2canvas(element, {
+        scale: 3, // เพิ่มความคมชัดระดับ HD
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('taxInvoicePrint');
+          clonedElement.style.transform = 'none';
+          
+          // บังคับการจัดตำแหน่ง Text และ Line-height ทุกองค์ประกอบใน Canvas
+          const allElements = clonedElement.querySelectorAll('*');
+          allElements.forEach(el => {
+            el.style.lineHeight = '1.4';
+            // ป้องกันสระเลื่อน/ตัวหนังสือซ้อนเส้นขอบ
+            if (window.getComputedStyle(el).borderBottomWidth !== '0px') {
+              el.style.paddingBottom = '3px';
+            }
+          });
+        }
+      }).then(canvas => {
+        const image = canvas.toDataURL('image/png', 1.0);
+        const link = document.createElement('a');
+        link.download = `${invNo}.png`;
+        link.href = image;
+        link.click();
+        link.remove();
+      }).catch(err => {
+        console.error('Export PNG Error:', err);
+        alert('เกิดข้อผิดพลาดในการสร้างไฟล์ PNG');
+      });
+    }
+    // Thai Baht Text Conversion Utility
+    function arabicToThaiBaht(numbers) {
+      numbers = Number(numbers || 0).toFixed(2);
+      if (numbers == "0.00") return "ศูนย์บาทถ้วน";
+
+      const numberArray = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
+      const digitArray = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
+
+      const splitNum = numbers.split(".");
+      let bahtStr = splitNum[0];
+      let satangStr = splitNum[1];
+
+      let bahtText = "";
+      const bahtLen = bahtStr.length;
+
+      for (let i = 0; i < bahtLen; i++) {
+        let digit = parseInt(bahtStr.charAt(i));
+        let pos = bahtLen - i - 1;
+        if (digit !== 0) {
+          if (pos % 6 === 1 && digit === 1) {
+            bahtText += (i > 0 && bahtStr.charAt(i - 1) !== '0') ? "" : "สิบ";
+          } else if (pos % 6 === 1 && digit === 2) {
+            bahtText += "ยี่สิบ";
+          } else if (pos % 6 === 0 && digit === 1 && bahtLen > 1 && bahtStr.charAt(i - 1) !== '0') {
+            bahtText += "เอ็ด";
+          } else {
+            bahtText += numberArray[digit] + digitArray[pos % 6];
+          }
+        }
+        if (pos % 6 === 0 && pos > 0) {
+          bahtText += "ล้าน";
+        }
+      }
+
+      let satangText = "";
+      if (satangStr === "00") {
+        satangText = "ถ้วน";
+      } else {
+        let d1 = parseInt(satangStr.charAt(0));
+        let d2 = parseInt(satangStr.charAt(1));
+
+        if (d1 !== 0) {
+          if (d1 === 1) satangText += "สิบ";
+          else if (d1 === 2) satangText += "ยี่สิบ";
+          else satangText += numberArray[d1] + "สิบ";
+        }
+
+        if (d2 !== 0) {
+          if (d2 === 1 && d1 !== 0) satangText += "เอ็ด";
+          else satangText += numberArray[d2];
+        }
+        satangText += "สตางค์";
+      }
+
+      return bahtText + "บาท" + satangText;
+    }
+  function toggleAllPayChannels(selectState) {
+    document.querySelectorAll('.pay-channel-checkbox').forEach(cb => {
+      cb.checked = selectState;
+    });
+  }
+  </script>
+</body>
+</html>
